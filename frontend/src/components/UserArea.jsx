@@ -37,7 +37,7 @@ export default function UserArea({userType}){
           <div>Empréstimos ativos: 2</div>
           <div>Reservas: 1</div>
           <div>Multas pendentes: R$ 5,00</div>
-          {userType === 'Bibliotecário' && <div className="mt-3"><button className="px-3 py-2 rounded-md bg-[#334155] text-white">Painel Bibliotecário</button></div>}
+          {(userType === 'Bibliotecario' || userType === 'Bibliotecário') && <div className="mt-3"><button className="px-3 py-2 rounded-md bg-[#334155] text-white">Painel Bibliotecario</button></div>}
           {userType === 'Administrador' && <div className="mt-3"><button className="px-3 py-2 rounded-md bg-[#334155] text-white">Painel Admin</button></div>}
         </div>
       </aside>

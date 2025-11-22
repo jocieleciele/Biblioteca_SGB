@@ -1,6 +1,6 @@
 // frontend/src/pages/Register.jsx
 import React, { useState } from "react";
-import api from "../services/api";
+import { register } from "../services/api.js";
 
 export default function Register({ onSuccess }) {
   const [name, setName] = useState("");
@@ -13,14 +13,32 @@ export default function Register({ onSuccess }) {
   const handle = async (e) => {
     e.preventDefault();
     setError(null);
-    if (!name || !email || !password) return setError("Preencha todos");
-    if (password !== confirm) return setError("Senhas não conferem");
+    
+    // Validações
+    if (!name || !email || !password) {
+      return setError("Preencha todos os campos");
+    }
+    if (password !== confirm) {
+      return setError("Senhas não conferem");
+    }
+    if (password.length < 6) {
+      return setError("A senha deve ter pelo menos 6 caracteres");
+    }
+    
     try {
       setLoading(true);
-      const res = await api.post("/auth/register", { name, email, password });
-      onSuccess && onSuccess(res.data.user);
+      const data = await register(name, email, password);
+      if (data.user) {
+        onSuccess && onSuccess(data.user);
+      } else {
+        setError("Erro ao processar registro");
+      }
     } catch (err) {
-      setError(err.response?.data?.message || "Erro ao cadastrar");
+      console.error("Erro no registro:", err);
+      const errorMessage = err.response?.data?.message || 
+                          err.message || 
+                          "Erro ao cadastrar. Verifique se o servidor está rodando.";
+      setError(errorMessage);
     } finally {
       setLoading(false);
     }

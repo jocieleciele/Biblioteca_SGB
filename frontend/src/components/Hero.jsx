@@ -1,28 +1,29 @@
 import React, { useState } from 'react'
-
-const livrosExemplo = [
-  {id:1, titulo:'Coroa dos Justos (Espada dos Mortos — Livro Três)', autor:'Morgan Rice', categoria:'ficção', ano:2025, capa:'img1'},
-  {id:2, titulo:'Canção dos Valentes (Espada dos Mortos — Livro Dois)', autor:'Morgan Rice', categoria:'ficção', ano:2025, capa:'img2'},
-  {id:3, titulo:'A Arte da Guerra', autor:'Sun Tzu', categoria:'ação', ano:2009, capa:'img3'},
-  {id:4, titulo:'O Encantador de Corvos', autor:'Jacob Grey', categoria:'ficção', ano:2017, capa:'img4'},
-]
+import { getMateriais } from '../services/api.js'
+import { getImageSrc } from '../utils/imageHelper'
 
 export default function Hero({ onSearch }) {
   const [q, setQ] = useState('')
   const [resultados, setResultados] = useState([])
+  const [buscando, setBuscando] = useState(false)
 
-  const buscarLivros = () => {
-    const termo = q.trim().toLowerCase()
+  const buscarLivros = async () => {
+    const termo = q.trim()
     if (termo === '') {
       setResultados([])
       return
     }
-    const encontrados = livrosExemplo.filter(
-      (l) =>
-        l.titulo.toLowerCase().includes(termo) ||
-        l.autor.toLowerCase().includes(termo)
-    )
-    setResultados(encontrados)
+    
+    setBuscando(true)
+    try {
+      const data = await getMateriais({ q: termo })
+      setResultados(data.items || [])
+    } catch (err) {
+      console.error('Erro ao buscar:', err)
+      setResultados([])
+    } finally {
+      setBuscando(false)
+    }
   }
 
   const abrirDetalhe = (livro) => {
@@ -57,25 +58,44 @@ export default function Hero({ onSearch }) {
 
         {/* Resultados da pesquisa */}
         <div className="bg-panel rounded-md p-4 border border-gray-800 min-h-[220px]">
-          {resultados.length === 0 ? (
+          {buscando ? (
             <div className="text-gray-500 flex items-center justify-center h-full text-sm">
-              Nenhum resultado encontrado
+              Buscando...
+            </div>
+          ) : resultados.length === 0 ? (
+            <div className="text-gray-500 flex items-center justify-center h-full text-sm">
+              {q ? 'Nenhum resultado encontrado' : 'Digite algo para buscar'}
             </div>
           ) : (
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              {resultados.map((livro) => (
-                <div
-                  key={livro.id}
-                  onClick={() => abrirDetalhe(livro)}
-                  className="bg-[#071018] rounded-md p-3 hover:bg-[#0c1a26] cursor-pointer transition"
-                >
-                  <div className="h-32 bg-panel flex items-center justify-center text-gray-400 rounded">
-                    {livro.capa}
+              {resultados.map((livro) => {
+                const imageSrc = getImageSrc(livro.capa, livro.titulo);
+                return (
+                  <div
+                    key={livro.id}
+                    onClick={() => abrirDetalhe(livro)}
+                    className="bg-[#071018] rounded-md p-3 hover:bg-[#0c1a26] cursor-pointer transition"
+                  >
+                    <div className="h-32 bg-panel flex items-center justify-center text-gray-400 rounded overflow-hidden relative">
+                      {imageSrc ? (
+                        <img
+                          src={imageSrc}
+                          alt={livro.titulo}
+                          className="h-full w-full object-cover"
+                          onError={(e) => {
+                            e.target.style.display = 'none';
+                          }}
+                        />
+                      ) : null}
+                      {!imageSrc && (
+                        <span className="text-xs">Sem imagem</span>
+                      )}
+                    </div>
+                    <h3 className="mt-2 text-sm font-semibold text-white">{livro.titulo}</h3>
+                    <p className="text-xs text-gray-400">{livro.autor} • {livro.ano}</p>
                   </div>
-                  <h3 className="mt-2 text-sm font-semibold text-white">{livro.titulo}</h3>
-                  <p className="text-xs text-gray-400">{livro.autor} • {livro.ano}</p>
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </div>

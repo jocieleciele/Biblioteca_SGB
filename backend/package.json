@@ -5,18 +5,22 @@
   "type": "module",
   "scripts": {
     "dev": "nodemon src/index.js",
-    "start": "node src/index.js"
+    "start": "node src/index.js",
+    "migrate": "knex migrate:latest",
+    "migrate:make": "knex migrate:make"
   },
   "dependencies": {
-    "bcrypt": "^5.1.0",
-    "bcryptjs": "^3.0.3",
+    "bcryptjs": "^2.4.3",
     "cors": "^2.8.5",
     "dotenv": "^16.6.1",
     "express": "^4.21.2",
     "jsonwebtoken": "^9.0.2",
+    "multer": "^2.0.2",
+    "nodemailer": "^6.9.14",
     "pg": "^8.16.3"
   },
   "devDependencies": {
+    "knex": "^3.1.0",
     "nodemon": "^2.0.22"
   },
   "description": "Backend para o projeto da biblioteca fullstack",
