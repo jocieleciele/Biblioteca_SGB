@@ -126,7 +126,7 @@ export default function App() {
               // Normalizar role para verificação
               const userRole = user.role === 'Bibliotecário' ? 'Bibliotecario' : user.role;
               if (userRole === "Administrador" || userRole === "Bibliotecario") {
-                return <Painel user={user} />;
+                return <Painel user={user} onNavigate={go} />;
               } else {
                 return <div className="text-red-400">Acesso negado. Apenas Bibliotecarios e Administradores podem acessar.</div>;
               }

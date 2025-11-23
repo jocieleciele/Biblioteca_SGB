@@ -123,7 +123,7 @@ router.put('/:id', verifyToken, async (req, res) => {
   }
 })
 
-// DELETE /api/users/:id -> Excluir usuário (soft delete)
+// DELETE /api/users/:id -> Excluir usuário (hard delete)
 router.delete('/:id', verifyToken, async (req, res) => {
   const { id } = req.params
   const uid = parseInt(id, 10)
@@ -154,17 +154,49 @@ router.delete('/:id', verifyToken, async (req, res) => {
 
     if (parseInt(emprestimosAtivos.rows[0].count) > 0) {
       return res.status(400).json({
-        message: 'Não é possível excluir usuário com empréstimos ativos',
+        message: 'Não é possível excluir usuário com empréstimos ativos. Primeiro devolva todos os materiais.',
       })
     }
 
-    // Soft delete
-    await db.query(
-      'UPDATE users SET active = FALSE, updated_at = CURRENT_TIMESTAMP WHERE id = $1',
-      [uid]
-    )
+    // Obter um client do pool para transação
+    const client = await db.connect()
 
-    res.json({ message: 'Usuário excluído com sucesso!' })
+    try {
+      // Iniciar transação
+      await client.query('BEGIN')
+
+      // Excluir registros relacionados (em ordem para respeitar foreign keys)
+      // 1. Excluir pagamentos (referencia multas e users)
+      await client.query('DELETE FROM pagamentos WHERE usuario_id = $1', [uid])
+      
+      // 2. Excluir multas (referencia emprestimos e users)
+      await client.query('DELETE FROM multas WHERE usuario_id = $1', [uid])
+      
+      // 3. Excluir recomendações (referencia users e materials)
+      await client.query('DELETE FROM recomendacoes WHERE usuario_id = $1', [uid])
+      
+      // 4. Excluir reservas (referencia users e materials)
+      await client.query('DELETE FROM reservas WHERE usuario_id = $1', [uid])
+      
+      // 5. Excluir empréstimos (referencia users e materials)
+      // Nota: empréstimos já devolvidos podem ser excluídos, mas verificamos antes se há ativos
+      await client.query('DELETE FROM emprestimos WHERE usuario_id = $1', [uid])
+      
+      // 6. Finalmente, excluir o usuário
+      await client.query('DELETE FROM users WHERE id = $1', [uid])
+
+      // Confirmar transação
+      await client.query('COMMIT')
+
+      res.json({ message: 'Usuário excluído permanentemente com sucesso!' })
+    } catch (deleteErr) {
+      // Reverter transação em caso de erro
+      await client.query('ROLLBACK')
+      throw deleteErr
+    } finally {
+      // Sempre liberar o client
+      client.release()
+    }
   } catch (err) {
     console.error("Erro ao excluir usuário:", err);
     console.error("Stack:", err.stack);

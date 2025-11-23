@@ -16,36 +16,56 @@ router.get("/user/:id", verifyToken, async (req, res) => {
   try {
     // 1. Buscar histórico de empréstimos do usuário
     const historicoResult = await db.query(
-      `SELECT DISTINCT m.categoria, m.autor, m.id as material_id
+      `SELECT m.categoria, m.autor, m.id as material_id
        FROM emprestimos e
        JOIN materials m ON m.id = e.material_id
        WHERE e.usuario_id = $1 AND e.data_devolucao IS NOT NULL
-       ORDER BY e.data_emprestimo DESC
+       GROUP BY m.id, m.categoria, m.autor
+       ORDER BY MAX(e.data_emprestimo) DESC
        LIMIT 20`,
       [uid]
     );
 
+    // Função auxiliar para retornar materiais populares
+    const retornarPopulares = async (excluirIds = []) => {
+      let query;
+      let params;
+      
+      if (excluirIds.length > 0) {
+        query = `
+          SELECT m.*, 
+                 0.5 as score_base
+          FROM materials m
+          WHERE m.active = TRUE
+          AND m.id != ALL($1::int[])
+          ORDER BY m.avaliacao DESC, m.titulo ASC
+          LIMIT 10
+        `;
+        params = [excluirIds];
+      } else {
+        query = `
+          SELECT m.*, 
+                 0.5 as score_base
+          FROM materials m
+          WHERE m.active = TRUE
+          ORDER BY m.avaliacao DESC, m.titulo ASC
+          LIMIT 10
+        `;
+        params = [];
+      }
+      
+      const result = await db.query(query, params);
+      return result.rows.map((m, idx) => ({
+        ...m,
+        score: 0.5 - idx * 0.02,
+        motivo: "Materiais populares",
+      }));
+    };
+
     if (historicoResult.rows.length === 0) {
       // Se não tem histórico, retornar materiais mais populares
-      const popularesResult = await db.query(
-        `SELECT m.*, 
-                COALESCE(
-                  (SELECT COUNT(*) FROM emprestimos e 
-                   WHERE e.material_id = m.id AND e.data_devolucao IS NOT NULL), 0
-                ) as total_emprestimos
-         FROM materials m
-         WHERE m.active = TRUE
-         ORDER BY total_emprestimos DESC, m.avaliacao DESC
-         LIMIT 10`
-      );
-
-      return res.json({
-        items: popularesResult.rows.map((m, idx) => ({
-          ...m,
-          score: 0.5 - idx * 0.05, // Score decrescente
-          motivo: "Materiais mais populares",
-        })),
-      });
+      const items = await retornarPopulares();
+      return res.json({ items });
     }
 
     // 2. Extrair categorias e autores mais frequentes
@@ -54,71 +74,137 @@ router.get("/user/:id", verifyToken, async (req, res) => {
     const materiaisJaEmprestados = new Set();
 
     historicoResult.rows.forEach((row) => {
-      materiaisJaEmprestados.add(row.material_id);
-      if (row.categoria) {
+      if (row.material_id) {
+        materiaisJaEmprestados.add(row.material_id);
+      }
+      if (row.categoria && row.categoria.trim() !== '') {
         categorias[row.categoria] = (categorias[row.categoria] || 0) + 1;
       }
-      if (row.autor) {
+      if (row.autor && row.autor.trim() !== '') {
         autores[row.autor] = (autores[row.autor] || 0) + 1;
       }
     });
 
     // 3. Buscar materiais similares (mesma categoria ou mesmo autor)
     const categoriasFavoritas = Object.keys(categorias)
+      .filter(cat => cat != null && typeof cat === 'string' && cat.trim() !== '')
       .sort((a, b) => categorias[b] - categorias[a])
       .slice(0, 3);
     const autoresFavoritos = Object.keys(autores)
+      .filter(aut => aut != null && typeof aut === 'string' && aut.trim() !== '')
       .sort((a, b) => autores[b] - autores[a])
       .slice(0, 3);
 
-    const materiaisIds = Array.from(materiaisJaEmprestados);
+    const materiaisIds = Array.from(materiaisJaEmprestados).filter(id => id != null);
     
     // Se não há categorias ou autores favoritos, retornar materiais populares
     if (categoriasFavoritas.length === 0 && autoresFavoritos.length === 0) {
-      const popularesResult = await db.query(
-        `SELECT m.*, 
-                0.5 as score_base
-         FROM materials m
-         WHERE m.active = TRUE
-         AND m.id != ALL($1::int[])
-         ORDER BY m.avaliacao DESC, m.titulo ASC
-         LIMIT 10`,
-        [materiaisIds.length > 0 ? materiaisIds : [0]]
-      );
-
-      return res.json({
-        items: popularesResult.rows.map((m) => ({
-          ...m,
-          score: 0.5,
-          motivo: "Materiais populares",
-        })),
-      });
+      const items = await retornarPopulares(materiaisIds);
+      return res.json({ items });
     }
 
-    let recomendacoesQuery = `
-      SELECT m.*,
-             CASE 
-               WHEN m.autor = ANY($1::text[]) AND m.categoria = ANY($2::text[]) THEN 0.9
-               WHEN m.autor = ANY($1::text[]) THEN 0.7
-               WHEN m.categoria = ANY($2::text[]) THEN 0.6
-               ELSE 0.4
-             END as score_base
-      FROM materials m
-      WHERE m.active = TRUE
-      AND m.id != ALL($3::int[])
-      AND (
-        m.autor = ANY($1::text[]) OR 
-        m.categoria = ANY($2::text[])
-      )
-      ORDER BY score_base DESC, m.avaliacao DESC
-      LIMIT 10
-    `;
+    // Construir query de recomendações baseada nos dados disponíveis
+    let recomendacoesQuery;
+    let queryParams = [];
+    
+    // Construir query baseada no que temos disponível
+    if (autoresFavoritos.length > 0 && categoriasFavoritas.length > 0) {
+      // Temos ambos: autores e categorias
+      if (materiaisIds.length > 0) {
+        recomendacoesQuery = `
+          SELECT m.*,
+                 CASE 
+                   WHEN m.autor = ANY($1::text[]) AND m.categoria = ANY($2::text[]) THEN 0.9
+                   WHEN m.autor = ANY($1::text[]) THEN 0.7
+                   WHEN m.categoria = ANY($2::text[]) THEN 0.6
+                   ELSE 0.4
+                 END as score_base
+          FROM materials m
+          WHERE m.active = TRUE
+          AND m.id != ALL($3::int[])
+          AND (m.autor = ANY($1::text[]) OR m.categoria = ANY($2::text[]))
+          ORDER BY score_base DESC, m.avaliacao DESC
+          LIMIT 10
+        `;
+        queryParams = [autoresFavoritos, categoriasFavoritas, materiaisIds];
+      } else {
+        recomendacoesQuery = `
+          SELECT m.*,
+                 CASE 
+                   WHEN m.autor = ANY($1::text[]) AND m.categoria = ANY($2::text[]) THEN 0.9
+                   WHEN m.autor = ANY($1::text[]) THEN 0.7
+                   WHEN m.categoria = ANY($2::text[]) THEN 0.6
+                   ELSE 0.4
+                 END as score_base
+          FROM materials m
+          WHERE m.active = TRUE
+          AND (m.autor = ANY($1::text[]) OR m.categoria = ANY($2::text[]))
+          ORDER BY score_base DESC, m.avaliacao DESC
+          LIMIT 10
+        `;
+        queryParams = [autoresFavoritos, categoriasFavoritas];
+      }
+    } else if (autoresFavoritos.length > 0) {
+      // Só temos autores
+      if (materiaisIds.length > 0) {
+        recomendacoesQuery = `
+          SELECT m.*, 0.7 as score_base
+          FROM materials m
+          WHERE m.active = TRUE
+          AND m.id != ALL($2::int[])
+          AND m.autor = ANY($1::text[])
+          ORDER BY score_base DESC, m.avaliacao DESC
+          LIMIT 10
+        `;
+        queryParams = [autoresFavoritos, materiaisIds];
+      } else {
+        recomendacoesQuery = `
+          SELECT m.*, 0.7 as score_base
+          FROM materials m
+          WHERE m.active = TRUE
+          AND m.autor = ANY($1::text[])
+          ORDER BY score_base DESC, m.avaliacao DESC
+          LIMIT 10
+        `;
+        queryParams = [autoresFavoritos];
+      }
+    } else if (categoriasFavoritas.length > 0) {
+      // Só temos categorias
+      if (materiaisIds.length > 0) {
+        recomendacoesQuery = `
+          SELECT m.*, 0.6 as score_base
+          FROM materials m
+          WHERE m.active = TRUE
+          AND m.id != ALL($2::int[])
+          AND m.categoria = ANY($1::text[])
+          ORDER BY score_base DESC, m.avaliacao DESC
+          LIMIT 10
+        `;
+        queryParams = [categoriasFavoritas, materiaisIds];
+      } else {
+        recomendacoesQuery = `
+          SELECT m.*, 0.6 as score_base
+          FROM materials m
+          WHERE m.active = TRUE
+          AND m.categoria = ANY($1::text[])
+          ORDER BY score_base DESC, m.avaliacao DESC
+          LIMIT 10
+        `;
+        queryParams = [categoriasFavoritas];
+      }
+    } else {
+      // Fallback: retornar materiais populares
+      const items = await retornarPopulares(materiaisIds);
+      return res.json({ items });
+    }
 
-    const result = await db.query(recomendacoesQuery, [
-      autoresFavoritos.length > 0 ? autoresFavoritos : [''],
-      categoriasFavoritas.length > 0 ? categoriasFavoritas : [''],
-      materiaisIds.length > 0 ? materiaisIds : [0],
-    ]);
+    // Verificar se temos query válida antes de executar
+    if (!recomendacoesQuery || queryParams.some(p => !p || (Array.isArray(p) && p.length === 0))) {
+      const items = await retornarPopulares(materiaisIds);
+      return res.json({ items });
+    }
+
+    const result = await db.query(recomendacoesQuery, queryParams);
 
     // 4. Gerar motivos para cada recomendação
     const recomendacoes = result.rows.map((material) => {

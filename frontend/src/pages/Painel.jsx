@@ -3,7 +3,7 @@ import DashboardLeitor from "./DashboardLeitor";
 import DashboardBibliotecario from "./DashboardBibliotecario";
 import DashboardAdmin from "./DashboardAdmin";
 
-export default function Painel({ user }) {
+export default function Painel({ user, onNavigate }) {
   console.log('🔍 Painel - User completo:', JSON.stringify(user, null, 2));
   
   if (!user) {
@@ -35,7 +35,7 @@ export default function Painel({ user }) {
       return <DashboardLeitor user={user} />;
     case 'Bibliotecario':
       console.log('Renderizando DashboardBibliotecario');
-      return <DashboardBibliotecario user={user} />;
+      return <DashboardBibliotecario user={user} onNavigate={onNavigate} />;
     case 'Administrador':
       console.log('Renderizando DashboardAdmin');
       return <DashboardAdmin user={user} />;

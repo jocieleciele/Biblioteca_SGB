@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { Book, Clock, AlertCircle, Bookmark, TrendingUp, DollarSign, RefreshCw } from "lucide-react";
-import { getEmprestimosByUser, getReservasByUser, getMultasPendentesByUser, getRecomendacoesByUser } from "../services/api.js";
+import { getEmprestimosByUser, getReservasByUser, getMultasPendentesByUser, getRecomendacoesByUser, createPagamento } from "../services/api.js";
 
 export default function DashboardLeitor({ user }) {
   const [emprestimos, setEmprestimos] = useState([]);
@@ -8,6 +8,7 @@ export default function DashboardLeitor({ user }) {
   const [multas, setMultas] = useState([]);
   const [recomendacoes, setRecomendacoes] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [pagandoMulta, setPagandoMulta] = useState(null); // ID da multa sendo paga
   const [stats, setStats] = useState({
     emprestimosAtivos: 0,
     reservasAtivas: 0,
@@ -92,6 +93,27 @@ export default function DashboardLeitor({ user }) {
       await loadData();
     } catch (err) {
       alert("Erro ao renovar empréstimo: " + (err.response?.data?.error || err.message));
+    }
+  };
+
+  const pagarMulta = async (multaId) => {
+    if (!window.confirm("Deseja realmente pagar esta multa?")) {
+      return;
+    }
+
+    setPagandoMulta(multaId);
+    try {
+      await createPagamento({
+        multa_id: multaId,
+        metodo_pagamento: "Online"
+      });
+      alert("Multa paga com sucesso!");
+      await loadData(); // Recarregar dados para atualizar a lista
+    } catch (err) {
+      console.error("Erro ao pagar multa:", err);
+      alert("Erro ao pagar multa: " + (err.response?.data?.error || err.response?.data?.message || err.message || "Erro desconhecido"));
+    } finally {
+      setPagandoMulta(null);
     }
   };
 
@@ -268,8 +290,12 @@ export default function DashboardLeitor({ user }) {
                     <p className="text-xs text-gray-500 mb-2">
                       {multa.dias_atraso} dia(s) de atraso
                     </p>
-                    <button className="w-full px-3 py-2 rounded-lg bg-accent text-black font-medium hover:bg-orange-500 transition-colors text-sm">
-                      Pagar Multa
+                    <button 
+                      onClick={() => pagarMulta(multa.id)}
+                      disabled={pagandoMulta === multa.id || multa.status === 'Paga'}
+                      className="w-full px-3 py-2 rounded-lg bg-accent text-black font-medium hover:bg-orange-500 transition-colors text-sm disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      {pagandoMulta === multa.id ? 'Processando...' : multa.status === 'Paga' ? 'Paga' : 'Pagar Multa'}
                     </button>
                   </div>
                 ))}

@@ -88,11 +88,15 @@ router.get("/", verifyToken, async (req, res) => {
 
 // POST /api/emprestimos  -> criar empréstimo (protected)
 router.post("/", verifyToken, async (req, res) => {
-  const { material_id } = req.body;
+  const { material_id, usuario_id: usuario_id_body } = req.body;
   const { id: requisitante_id, role: requisitante_role } = req.user;
 
   // Um leitor só pode solicitar para si mesmo.
-  const usuario_id = requisitante_id;
+  // Bibliotecários e Administradores podem criar para outros usuários
+  let usuario_id = requisitante_id;
+  if ((requisitante_role === "Bibliotecario" || requisitante_role === "Bibliotecário" || requisitante_role === "Administrador") && usuario_id_body) {
+    usuario_id = parseInt(usuario_id_body, 10);
+  }
 
   // Define a data de devolução para 14 dias a partir de hoje
   const data_prevista = new Date();
