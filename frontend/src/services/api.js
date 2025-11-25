@@ -24,7 +24,7 @@ api.interceptors.response.use(
   }
 );
 
-// ==================== ROTAS DE AUTENTICAÇÃO ====================
+// ROTAS DE AUTENTICAÇÃO //
 export const register = async (name, email, password) => {
   const res = await api.post('/auth/register', { name, email, password });
   return res.data;
@@ -42,7 +42,7 @@ export const logout = () => {
   localStorage.removeItem('token');
 };
 
-// ==================== ROTAS DE UPLOAD ====================
+// ROTAS DE UPLOAD //
 export const uploadImage = async (file) => {
   const formData = new FormData();
   formData.append('image', file);
@@ -55,7 +55,7 @@ export const uploadImage = async (file) => {
   return res.data;
 };
 
-// ==================== ROTAS DE MATERIAIS ====================
+// ROTAS DE MATERIAIS //
 // Buscar materiais com filtros opcionais
 export const getMateriais = async (filters = {}) => {
   const params = new URLSearchParams();
@@ -95,7 +95,7 @@ export const deleteMaterial = async (id) => {
   return res.data;
 };
 
-// ==================== ROTAS DE EMPRÉSTIMOS ====================
+  // ROTAS DE EMPRÉSTIMOS //
 export const getEmprestimosByUser = async (userId) => {
   const res = await api.get(`/emprestimos/user/${userId}`);
   return res.data;
@@ -126,7 +126,7 @@ export const getAtrasados = async () => {
   return res.data;
 };
 
-// ==================== ROTAS DE RESERVAS ====================
+  // ROTAS DE RESERVAS //
 export const createReserva = async (materialId) => {
   const res = await api.post('/reservas', { material_id: materialId });
   return res.data;
@@ -142,7 +142,7 @@ export const getReservasByUser = async (userId) => {
   return res.data;
 };
 
-// ==================== ROTAS DE USUÁRIOS ====================
+// ROTAS DE USUÁRIOS //
 export const getUsers = async () => {
   const res = await api.get('/users');
   return res.data;
@@ -163,7 +163,7 @@ export const deleteUser = async (id) => {
   return res.data;
 };
 
-// ==================== ROTAS DE MULTAS ====================
+// ROTAS DE MULTAS //
 export const getMultas = async () => {
   const res = await api.get('/multas');
   return res.data;
@@ -197,6 +197,11 @@ export const getPagamentosByUser = async (userId) => {
 
 export const getAllPagamentos = async () => {
   const res = await api.get('/pagamentos');
+  return res.data;
+};
+
+export const getPagamentoStatus = async (transactionId) => {
+  const res = await api.get(`/pagamentos/status/${transactionId}`);
   return res.data;
 };
 

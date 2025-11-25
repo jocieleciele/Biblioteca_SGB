@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
-import { Book, Users, Clock, AlertTriangle, PlusCircle, CheckCircle, Bookmark, X, DollarSign, AlertCircle } from "lucide-react";
-import { getAllEmprestimos, getAtrasados, getUsers, getMateriais, getAllReservas, createMaterial, createEmprestimo, uploadImage, getMultas, createPagamento } from "../services/api.js";
+import { Book, Users, Clock, AlertTriangle, PlusCircle, CheckCircle, Bookmark, X, DollarSign, AlertCircle, Loader } from "lucide-react";
+import { getAllEmprestimos, getAtrasados, getUsers, getMateriais, getAllReservas, createMaterial, createEmprestimo, uploadImage, getMultas, createPagamento, calcularMultas } from "../services/api.js";
 import { getImageSrc } from "../utils/imageHelper.js";
 
 export default function DashboardBibliotecario({ user, onNavigate }) {
@@ -157,6 +157,26 @@ export default function DashboardBibliotecario({ user, onNavigate }) {
       alert("Erro ao pagar multa: " + (err.response?.data?.error || err.response?.data?.message || err.message || "Erro desconhecido"));
     } finally {
       setPagandoMulta(null);
+    }
+  };
+
+  const [calculandoMultas, setCalculandoMultas] = useState(false);
+
+  const handleCalcularMultas = async () => {
+    if (!window.confirm("Deseja calcular multas para todos os empréstimos atrasados?")) {
+      return;
+    }
+
+    setCalculandoMultas(true);
+    try {
+      const result = await calcularMultas();
+      alert(result.message || `${result.items?.length || 0} multa(s) criada(s) com sucesso!`);
+      await loadData(); // Recarregar dados
+    } catch (err) {
+      console.error("Erro ao calcular multas:", err);
+      alert("Erro ao calcular multas: " + (err.response?.data?.error || err.message || "Erro desconhecido"));
+    } finally {
+      setCalculandoMultas(false);
     }
   };
 
@@ -413,10 +433,31 @@ export default function DashboardBibliotecario({ user, onNavigate }) {
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Empréstimos Atrasados */}
         <div className="bg-[#0a0a0a] rounded-xl p-6 border border-red-800/30">
-          <h2 className="text-xl font-semibold mb-4 flex items-center gap-2 text-red-400">
-            <AlertTriangle size={20} />
-            Empréstimos Atrasados ({atrasados.length > 0 ? atrasados.length : 1})
-          </h2>
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-xl font-semibold flex items-center gap-2 text-red-400">
+              <AlertTriangle size={20} />
+              Empréstimos Atrasados ({atrasados.length})
+            </h2>
+            {atrasados.length > 0 && (
+              <button
+                onClick={handleCalcularMultas}
+                disabled={calculandoMultas}
+                className="px-4 py-2 bg-accent text-black font-medium rounded-lg hover:bg-orange-500 transition-colors text-sm disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+              >
+                {calculandoMultas ? (
+                  <>
+                    <Loader className="animate-spin" size={16} />
+                    Calculando...
+                  </>
+                ) : (
+                  <>
+                    <DollarSign size={16} />
+                    Calcular Multas
+                  </>
+                )}
+              </button>
+            )}
+          </div>
           {atrasados.length === 0 ? (
             <div className="space-y-3 max-h-[500px] overflow-y-auto">
               {/* Exemplo de empréstimo atrasado para demonstração */}

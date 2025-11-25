@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { Book, Clock, AlertCircle, Bookmark, TrendingUp, DollarSign, RefreshCw } from "lucide-react";
-import { getEmprestimosByUser, getReservasByUser, getMultasPendentesByUser, getRecomendacoesByUser, createPagamento } from "../services/api.js";
+import { getEmprestimosByUser, getReservasByUser, getMultasPendentesByUser, getRecomendacoesByUser } from "../services/api.js";
+import PaymentModal from "../components/PaymentModal.jsx";
 
 export default function DashboardLeitor({ user }) {
   const [emprestimos, setEmprestimos] = useState([]);
@@ -8,7 +9,7 @@ export default function DashboardLeitor({ user }) {
   const [multas, setMultas] = useState([]);
   const [recomendacoes, setRecomendacoes] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [pagandoMulta, setPagandoMulta] = useState(null); // ID da multa sendo paga
+  const [multaSelecionada, setMultaSelecionada] = useState(null); // Multa selecionada para pagamento
   const [stats, setStats] = useState({
     emprestimosAtivos: 0,
     reservasAtivas: 0,
@@ -49,6 +50,7 @@ export default function DashboardLeitor({ user }) {
     try {
       const multRes = await getMultasPendentesByUser(user.id);
       mult = multRes.items || [];
+      console.log("Multas carregadas:", mult.length, mult);
     } catch (err) {
       console.error("Erro ao carregar multas:", err);
       mult = [];
@@ -96,25 +98,18 @@ export default function DashboardLeitor({ user }) {
     }
   };
 
-  const pagarMulta = async (multaId) => {
-    if (!window.confirm("Deseja realmente pagar esta multa?")) {
+  const handlePagarMulta = (multa) => {
+    console.log('Abrindo modal de pagamento para multa:', multa);
+    if (!multa || !multa.id) {
+      console.error('Multa inválida:', multa);
+      alert('Erro: Multa inválida. Por favor, recarregue a página.');
       return;
     }
+    setMultaSelecionada(multa);
+  };
 
-    setPagandoMulta(multaId);
-    try {
-      await createPagamento({
-        multa_id: multaId,
-        metodo_pagamento: "Online"
-      });
-      alert("Multa paga com sucesso!");
-      await loadData(); // Recarregar dados para atualizar a lista
-    } catch (err) {
-      console.error("Erro ao pagar multa:", err);
-      alert("Erro ao pagar multa: " + (err.response?.data?.error || err.response?.data?.message || err.message || "Erro desconhecido"));
-    } finally {
-      setPagandoMulta(null);
-    }
+  const handlePagamentoSucesso = () => {
+    loadData(); // Recarregar dados para atualizar a lista
   };
 
   if (loading) {
@@ -271,13 +266,13 @@ export default function DashboardLeitor({ user }) {
 
         {/* Sidebar */}
         <div className="space-y-4">
-          {/* Multas */}
-          {multas.length > 0 && (
-            <div className="bg-[#0a0a0a] rounded-xl p-6 border border-red-800/50">
-              <h2 className="text-xl font-semibold mb-4 flex items-center gap-2 text-red-400">
-                <AlertCircle size={20} />
-                Multas Pendentes
-              </h2>
+          {/* Multas - Sempre exibir */}
+          <div className="bg-[#0a0a0a] rounded-xl p-6 border border-red-800/50">
+            <h2 className="text-xl font-semibold mb-4 flex items-center gap-2 text-red-400">
+              <AlertCircle size={20} />
+              Multas Pendentes
+            </h2>
+            {multas.length > 0 ? (
               <div className="space-y-3">
                 {multas.map((multa) => (
                   <div key={multa.id} className="p-3 bg-[#101010] rounded-lg border border-red-800/30">
@@ -291,17 +286,27 @@ export default function DashboardLeitor({ user }) {
                       {multa.dias_atraso} dia(s) de atraso
                     </p>
                     <button 
-                      onClick={() => pagarMulta(multa.id)}
-                      disabled={pagandoMulta === multa.id || multa.status === 'Paga'}
+                      onClick={() => handlePagarMulta(multa)}
+                      disabled={multa.status === 'Paga'}
                       className="w-full px-3 py-2 rounded-lg bg-accent text-black font-medium hover:bg-orange-500 transition-colors text-sm disabled:opacity-50 disabled:cursor-not-allowed"
                     >
-                      {pagandoMulta === multa.id ? 'Processando...' : multa.status === 'Paga' ? 'Paga' : 'Pagar Multa'}
+                      {multa.status === 'Paga' ? 'Paga' : 'Pagar Multa'}
                     </button>
                   </div>
                 ))}
               </div>
-            </div>
-          )}
+            ) : (
+              <div className="text-center py-6">
+                <AlertCircle size={48} className="mx-auto mb-3 text-gray-600 opacity-50" />
+                <p className="text-gray-400 text-sm mb-2">Nenhuma multa pendente</p>
+                {emprestimos.filter(e => !e.data_devolucao && new Date(e.data_prevista) < new Date()).length > 0 && (
+                  <p className="text-xs text-yellow-400 mt-2">
+                    Você tem empréstimos atrasados. As multas serão calculadas em breve.
+                  </p>
+                )}
+              </div>
+            )}
+          </div>
 
           {/* Recomendações */}
           {recomendacoes.length > 0 && (
@@ -323,6 +328,16 @@ export default function DashboardLeitor({ user }) {
           )}
         </div>
       </div>
+
+      {/* Modal de Pagamento */}
+      {multaSelecionada && (
+        <PaymentModal
+          isOpen={!!multaSelecionada}
+          onClose={() => setMultaSelecionada(null)}
+          multa={multaSelecionada}
+          onSuccess={handlePagamentoSucesso}
+        />
+      )}
     </div>
   );
 }
